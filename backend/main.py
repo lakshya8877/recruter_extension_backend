@@ -145,6 +145,14 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
         text, re.I,
     )
     details["headquarters"] = m.group(1).strip().rstrip(",") if m else "Not found"
+    # Detect blended data (multiple conflicting locations)
+    if details["headquarters"] != "Not found":
+        hq = details["headquarters"]
+        countries = re.findall(r"\b(India|USA|UK|Zimbabwe|China|Brazil|Germany|France|Japan|Canada|Australia|Singapore|UAE|Dubai|Nigeria|Kenya)\b", hq, re.I)
+        cities = re.findall(r"\b([A-Z][a-z]+(?:pur|bad|garh|abad|giri|patnam|nagar)?)\b", hq)
+        # Too many distinct locations → blended
+        if len(countries) >= 2 or len(cities) >= 3 or len(hq) > 60:
+            details["headquarters"] = "Not found"
 
     # Employees / size
     m = re.search(
@@ -159,18 +167,18 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
 
     # ── Revenue ────────────────────────────────────────────────────
     m = re.search(
-        r"(?:revenue|annual revenue)(?:\s*(?:of|is|:))?\s*\$?([\d.]+)\s*(million|billion|thousand|[MBTK])\b",
+        r"(?:revenue|annual revenue)(?:\s*(?:of|is|:))?\s*\$?([\d.]+(?:\s*[MBTK]illion|[MBTK]\b)?)",
         text, re.I,
     )
-    details["revenue"] = _fmt_dollar(*m.groups()) if m else "Not found"
+    details["revenue"] = _clean_dollar(m.group(1)) if m else "Not found"
 
     # ── Funding ────────────────────────────────────────────────────
     m = re.search(
-        r"(?:raised|secured|funding of)\s*\$?([\d.]+)\s*(million|billion|thousand|[MBTK])\b",
+        r"(?:raised|secured|funding of)\s*\$?([\d.]+(?:\s*[MBTK]illion|[MBTK]\b)?)",
         text, re.I,
     )
     if m:
-        details["last_funding"] = _fmt_dollar(*m.groups())
+        details["last_funding"] = _clean_dollar(m.group(1))
     elif re.search(r"bootstrapp|self.funded|no (?:external )?funding", text, re.I):
         details["last_funding"] = "Bootstrapped"
     else:
@@ -215,12 +223,18 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
     return text.strip(), details
 
 
-def _fmt_dollar(num: str, unit: str) -> str:
-    """Normalize ('120', 'million') → '$120M', ('60', 'K') → '$60K'."""
-    unit_map = {"million": "M", "billion": "B", "thousand": "K",
-                "m": "M", "b": "B", "k": "K", "t": "T"}
-    u = unit_map.get(unit.lower(), unit)
-    return f"${num}{u}"
+def _clean_dollar(val: str) -> str:
+    """Clean up dollar amounts: '120 million' → '$120M', strip trailing 'in','to date'."""
+    val = val.strip().rstrip(",")
+    # Remove trailing noise words
+    val = re.sub(r"\s+(?:in\b.*|to\s+date.*|total.*|funding.*|as\s+of.*)", "", val, flags=re.I)
+    # Normalize units
+    val = re.sub(r"\s*million", "M", val, flags=re.I)
+    val = re.sub(r"\s*billion", "B", val, flags=re.I)
+    val = re.sub(r"\s*thousand", "K", val, flags=re.I)
+    if not val.startswith("$"):
+        val = "$" + val
+    return val
 
 
 # ── Serper (fallback) ──────────────────────────────────────────────────
