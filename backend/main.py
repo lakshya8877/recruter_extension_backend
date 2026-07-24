@@ -157,20 +157,20 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
         m = re.search(r"(\d+[-–]\d+)\s*employees", text, re.I)
         details["size"] = m.group(1) + " employees" if m else "Not found"
 
-    # Revenue
+    # ── Revenue ────────────────────────────────────────────────────
     m = re.search(
-        r"(?:revenue|annual revenue)(?:\s*(?:of|is|:))?\s*\$?([\d.]+(?:\s*[MBTK]illion)?)",
+        r"(?:revenue|annual revenue)(?:\s*(?:of|is|:))?\s*\$?([\d.]+)\s*(million|billion|thousand|[MBTK])\b",
         text, re.I,
     )
-    details["revenue"] = _fmt_dollar(m.group(1)) if m else "Not found"
+    details["revenue"] = _fmt_dollar(*m.groups()) if m else "Not found"
 
-    # Funding
+    # ── Funding ────────────────────────────────────────────────────
     m = re.search(
-        r"(?:raised|secured|funding of)\s*\$?([\d.]+(?:\s*[MBTK]illion)?(?:\s*(?:in|to date|total))?)",
+        r"(?:raised|secured|funding of)\s*\$?([\d.]+)\s*(million|billion|thousand|[MBTK])\b",
         text, re.I,
     )
     if m:
-        details["last_funding"] = _fmt_dollar(m.group(1))
+        details["last_funding"] = _fmt_dollar(*m.groups())
     elif re.search(r"bootstrapp|self.funded|no (?:external )?funding", text, re.I):
         details["last_funding"] = "Bootstrapped"
     else:
@@ -215,15 +215,12 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
     return text.strip(), details
 
 
-def _fmt_dollar(val: str) -> str:
-    """Normalize '169 million' → '$169M', '2 billion' → '$2B'."""
-    val = val.strip().rstrip(",")
-    val = re.sub(r"\s*million", "M", val, flags=re.I)
-    val = re.sub(r"\s*billion", "B", val, flags=re.I)
-    val = re.sub(r"\s*thousand", "K", val, flags=re.I)
-    if not val.startswith("$"):
-        val = "$" + val
-    return val
+def _fmt_dollar(num: str, unit: str) -> str:
+    """Normalize ('120', 'million') → '$120M', ('60', 'K') → '$60K'."""
+    unit_map = {"million": "M", "billion": "B", "thousand": "K",
+                "m": "M", "b": "B", "k": "K", "t": "T"}
+    u = unit_map.get(unit.lower(), unit)
+    return f"${num}{u}"
 
 
 # ── Serper (fallback) ──────────────────────────────────────────────────
