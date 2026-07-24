@@ -7,12 +7,49 @@
 
   const BACKEND_URL = "https://recruter-exten.vercel.app/lookup";
 
-  function triggerSearch() {
-    const text = window.getSelection().toString().trim();
+  async function triggerSearch() {
+    // 1. Context menu pre-set text (from background.js)
+    if (window.__rqsSelectedText) {
+      var txt = window.__rqsSelectedText;
+      window.__rqsSelectedText = null;
+      showPopup('Searching for "' + escapeHtml(txt) + '"...', false);
+      fetchCompanyInfo(txt);
+      return;
+    }
+
+    // 2. Try standard DOM selection (works on normal web pages)
+    var text = window.getSelection().toString().trim();
+
+    // 3. Clipboard fallback — works in Google Docs, Drive, and canvas-based viewers
+    if (!text) {
+      var oldClip = "";
+      try {
+        oldClip = await navigator.clipboard.readText();
+      } catch (_) { /* may fail if no prior clipboard content */ }
+
+      document.execCommand("copy");
+
+      try {
+        await new Promise(function (r) { setTimeout(r, 100); });
+        text = await navigator.clipboard.readText();
+        text = text.trim();
+      } catch (err) {
+        console.warn("Clipboard read failed:", err);
+      }
+
+      // Restore original clipboard content
+      if (oldClip && text && oldClip !== text) {
+        try {
+          await navigator.clipboard.writeText(oldClip);
+        } catch (_) { /* best effort */ }
+      }
+    }
+
     if (!text) {
       showPopup("Please highlight a company name first.", true);
       return;
     }
+
     showPopup('Searching for "' + escapeHtml(text) + '"...', false);
     fetchCompanyInfo(text);
   }
@@ -207,6 +244,30 @@
     var div = document.createElement("div");
     div.textContent = String(str);
     return div.innerHTML;
+  }
+
+  // ── Message listener (context menu results from background) ──────────
+
+  chrome.runtime.onMessage.addListener(function (msg) {
+    if (msg.type === "showResult" && msg.data) {
+      var body = document.getElementById("__rqs-body");
+      if (body) {
+        body.innerHTML = buildResultHTML(msg.data);
+      } else {
+        // No existing popup — create one
+        showResultPopup(msg.data);
+      }
+    } else if (msg.type === "showError") {
+      showPopup(msg.message || "An error occurred.", true);
+    }
+  });
+
+  function showResultPopup(data) {
+    showPopup("", false);
+    var body = document.getElementById("__rqs-body");
+    if (body) {
+      body.innerHTML = buildResultHTML(data);
+    }
   }
 
   triggerSearch();
