@@ -1,5 +1,4 @@
 (() => {
-  // Injection guard — avoid duplicate handlers on repeat triggers
   if (window.__rqsLoaded) {
     window.__rqsTrigger();
     return;
@@ -18,10 +17,9 @@
     fetchCompanyInfo(text);
   }
 
-  // Expose for injection guard re-trigger
   window.__rqsTrigger = triggerSearch;
 
-  // ── Popup ──────────────────────────────────────────────────────────────
+  // ── Popup ──────────────────────────────────────────────────────────
 
   function showPopup(content, isError) {
     removePopup();
@@ -52,47 +50,51 @@
 
     document.body.appendChild(wrapper);
 
-    // Render content — use innerHTML for formatted text, textContent for raw
     const body = document.getElementById("__rqs-body");
     if (isError || content.startsWith("Searching for")) {
       body.textContent = content;
     } else {
-      body.innerHTML = formatContent(content);
+      body.innerHTML = content;
     }
 
-    document
-      .getElementById("__rqs-close")
-      .addEventListener("click", removePopup);
-
+    document.getElementById("__rqs-close").addEventListener("click", removePopup);
     document.addEventListener("keydown", onKeyDown);
 
-    // Click-outside dismissal
-    setTimeout(() => {
+    setTimeout(function () {
       document.addEventListener("click", onClickOutside);
     }, 0);
 
     if (!document.getElementById("__rqs-style")) {
-      const style = document.createElement("style");
-      style.id = "__rqs-style";
-      style.textContent =
+      var s = document.createElement("style");
+      s.id = "__rqs-style";
+      s.textContent =
         "@keyframes rqsFadeIn{" +
         "from{opacity:0;transform:translateY(-8px)}" +
         "to{opacity:1;transform:translateY(0)}" +
         "}" +
-        "#__rqs-body strong{color:#1a1a1a;}" +
+        "#__rqs-body .rqs-details{" +
+        "margin-top:12px;padding-top:10px;border-top:1px solid #eee;" +
+        "display:grid;grid-template-columns:auto 1fr;gap:4px 12px;" +
+        "font-size:12px;" +
+        "}" +
+        "#__rqs-body .rqs-details .rqs-label{" +
+        "color:#888;white-space:nowrap;" +
+        "}" +
+        "#__rqs-body .rqs-details .rqs-val{" +
+        "color:#333;font-weight:500;" +
+        "}" +
         "#__rqs-body .rqs-link{" +
-        "display:block;margin-top:14px;padding-top:10px;" +
-        "border-top:1px solid #eee;" +
+        "margin-top:12px;padding-top:10px;border-top:1px solid #eee;" +
         "}" +
         "#__rqs-body .rqs-link a{" +
         "color:#0056b3;text-decoration:none;font-weight:600;font-size:13px;" +
         "}";
-      document.head.appendChild(style);
+      document.head.appendChild(s);
     }
   }
 
   function removePopup() {
-    const el = document.getElementById("__rqs-popup");
+    var el = document.getElementById("__rqs-popup");
     if (el) el.remove();
     document.removeEventListener("keydown", onKeyDown);
     document.removeEventListener("click", onClickOutside);
@@ -103,82 +105,100 @@
   }
 
   function onClickOutside(e) {
-    const popup = document.getElementById("__rqs-popup");
-    if (popup && !popup.contains(e.target)) {
-      removePopup();
-    }
+    var popup = document.getElementById("__rqs-popup");
+    if (popup && !popup.contains(e.target)) removePopup();
   }
 
-  // ── API call ───────────────────────────────────────────────────────────
+  // ── API call ───────────────────────────────────────────────────────
 
   async function fetchCompanyInfo(company) {
     try {
-      const resp = await fetch(BACKEND_URL, {
+      var resp = await fetch(BACKEND_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company: company }),
       });
 
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        let errorMsg = err.detail;
-        if (typeof errorMsg === "object") {
-          errorMsg = "Validation Error: Backend expected a different data format.";
+        var err = await resp.json().catch(function () { return {}; });
+        var msg = err.detail;
+        if (typeof msg === "object") {
+          msg = "Validation Error: Backend expected a different data format.";
         }
-        showPopup(errorMsg || "No information found.", true);
+        showPopup(msg || "No information found.", true);
         return;
       }
 
-      const data = await resp.json();
-      const body = document.getElementById("__rqs-body");
+      var data = await resp.json();
+      var body = document.getElementById("__rqs-body");
+      if (!body) return;
 
-      if (body) {
-        let summary = data.summary;
-        if (typeof summary === "object" && summary !== null) {
-          summary =
-            summary.description ||
-            summary.snippet ||
-            JSON.stringify(summary);
-        }
-
-        body.innerHTML = formatContent(summary || "No summary found.");
-
-        // Append link below the summary if available
-        if (data.link) {
-          const linkWrap = document.createElement("div");
-          linkWrap.className = "rqs-link";
-
-          const a = document.createElement("a");
-          a.href = data.link;
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          a.textContent = "Visit Official Website";
-
-          linkWrap.appendChild(a);
-          body.appendChild(linkWrap);
-        }
-      }
-    } catch {
+      body.innerHTML = buildResultHTML(data);
+    } catch (e) {
       showPopup("Could not reach the backend. Check your connection.", true);
     }
   }
 
-  // ── Content formatting ─────────────────────────────────────────────────
+  // ── Build result HTML ──────────────────────────────────────────────
 
-  function formatContent(text) {
-    // Convert **bold** markers to <strong> tags
-    let html = escapeHtml(text);
-    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    // Preserve line breaks
-    html = html.replace(/\n/g, "<br>");
+  function buildResultHTML(data) {
+    var html = "";
+
+    // Summary
+    var summary = data.summary || "No summary found.";
+    html += '<div class="rqs-summary">' + escapeHtml(summary) + "</div>";
+
+    // Details as bullet points
+    var details = data.details;
+    if (details && Object.keys(details).length > 0) {
+      html += '<div class="rqs-details">';
+
+      var labels = {
+        founding_year: "Founded",
+        headquarters: "Headquarters",
+        size: "Size",
+        revenue: "Revenue",
+        last_funding: "Funding",
+        industry: "Industry",
+        leadership: "Leadership",
+        clients: "Clients",
+      };
+
+      var keys = Object.keys(labels);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        var val = details[k];
+        if (val && val !== "Not found") {
+          html +=
+            '<span class="rqs-label">' +
+            escapeHtml(labels[k]) +
+            ":</span>" +
+            '<span class="rqs-val">' +
+            escapeHtml(val) +
+            "</span>";
+        }
+      }
+      html += "</div>";
+    }
+
+    // Link
+    if (data.link) {
+      html +=
+        '<div class="rqs-link">' +
+        '<a href="' +
+        escapeHtml(data.link) +
+        '" target="_blank" rel="noopener noreferrer">Visit Official Website</a>' +
+        "</div>";
+    }
+
     return html;
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────
 
   function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
+    var div = document.createElement("div");
+    div.textContent = String(str);
     return div.innerHTML;
   }
 
