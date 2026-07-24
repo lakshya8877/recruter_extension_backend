@@ -58,7 +58,8 @@ def search_tavily(company: str) -> Tuple[Optional[str], Dict[str, str], Optional
         answer = data.get("answer", "")
 
         if answer:
-            return _split_answer(answer), link
+            summary, details = _split_answer(answer)
+            return summary, details, link
 
         # Fallback: stitch snippets
         if results:
@@ -66,7 +67,8 @@ def search_tavily(company: str) -> Tuple[Optional[str], Dict[str, str], Optional
                 r.get("content", "") for r in results[:3] if r.get("content")
             )[:600]
             if combined.strip():
-                return _split_answer(combined), link
+                summary, details = _split_answer(combined)
+                return summary, details, link
     except Exception:
         pass
     return None, {}, None
