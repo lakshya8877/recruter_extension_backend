@@ -144,9 +144,16 @@
   function buildResultHTML(data) {
     var html = "";
 
-    // Summary
+    // Summary + cached badge
     var summary = data.summary || "No summary found.";
-    html += '<div class="rqs-summary">' + escapeHtml(summary) + "</div>";
+    html += '<div class="rqs-summary">' + escapeHtml(summary);
+    if (data.cached) {
+      html +=
+        ' <span style="background:#e8f5e9;color:#2e7d32;font-size:10px;' +
+        'padding:1px 6px;border-radius:3px;margin-left:6px;vertical-align:middle;">' +
+        "cached</span>";
+    }
+    html += "</div>";
 
     // Details as bullet points
     var details = data.details;
