@@ -97,7 +97,7 @@ def search_tavily(company: str) -> Tuple[Optional[str], Dict[str, str], Optional
     payload = {
         "api_key": TAVILY_API_KEY,
         "query": (
-            f"{company} India company overview founded year employees "
+            f'"{company}" India company overview founded year employees '
             f"revenue funding headquarters CEO industry clients"
         ),
         "search_depth": "advanced",
@@ -245,7 +245,7 @@ def search_serper(company: str) -> Tuple[Optional[str], Dict[str, str], Optional
         return None, {}, None
 
     headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
-    payload = {"q": f"{company} company overview founded employees revenue", "num": 10}
+    payload = {"q": f'"{company}" India company overview founded employees revenue', "num": 10}
     try:
         r = requests.post(
             "https://google.serper.dev/search",
