@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Recruiter Quick Search",
+  "version": "1.0.0",
+  "description": "Highlight a company name and press Ctrl+Shift+Y to get an instant summary.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["https://*.vercel.app/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Search highlighted company (Ctrl+Shift+Y)"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Search highlighted company"
+    }
+  }
+}
