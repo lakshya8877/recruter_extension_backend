@@ -1,6 +1,7 @@
 import os
 import re
 import requests
+from typing import Optional, Dict, Tuple
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -25,15 +26,15 @@ class LookupRequest(BaseModel):
 
 class LookupResponse(BaseModel):
     summary: str
-    details: dict[str, str]
+    details: Dict[str, str]
     source: str
-    link: str | None = None
+    link: Optional[str] = None
 
 
 # ── Tavily (primary) ───────────────────────────────────────────────────
 
 
-def search_tavily(company: str) -> tuple[str | None, dict[str, str], str | None]:
+def search_tavily(company: str) -> Tuple[Optional[str], Dict[str, str], Optional[str]]:
     if not TAVILY_API_KEY:
         return None, {}, None
 
@@ -71,13 +72,13 @@ def search_tavily(company: str) -> tuple[str | None, dict[str, str], str | None]
     return None, {}, None
 
 
-def _split_answer(text: str) -> tuple[str, dict[str, str]]:
+def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
     """
     Parse the answer text into a 1-2 sentence summary + structured details.
     The answer from the keyword query naturally contains:
     founded, headquarters, employees, revenue, funding, CEO, industry, clients.
     """
-    details: dict[str, str] = {}
+    details: Dict[str, str] = {}
 
     # ── Founding year ──────────────────────────────────────────────
     m = re.search(r"(?:founded|established|launched)\s*(?:in)?\s*(\d{4})", text, re.I)
@@ -164,7 +165,7 @@ def _split_answer(text: str) -> tuple[str, dict[str, str]]:
 # ── Serper (fallback) ──────────────────────────────────────────────────
 
 
-def search_serper(company: str) -> tuple[str | None, dict[str, str], str | None]:
+def search_serper(company: str) -> Tuple[Optional[str], Dict[str, str], Optional[str]]:
     if not SERPER_API_KEY:
         return None, {}, None
 
@@ -198,7 +199,7 @@ def search_serper(company: str) -> tuple[str | None, dict[str, str], str | None]
 
         summary = " | ".join(parts)[:600] if parts else None
 
-        details: dict[str, str] = {}
+        details: Dict[str, str] = {}
         if kg.get("type"):
             details["industry"] = kg["type"]
         if kg.get("employeeCount"):
