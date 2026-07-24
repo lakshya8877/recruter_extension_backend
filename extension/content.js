@@ -7,30 +7,43 @@
 
   const BACKEND_URL = "https://recruter-exten.vercel.app/lookup";
 
-  function triggerSearch() {
-    // Text already captured by background.js (shortcut/context-menu)
-    // or try live DOM selection for normal pages
-    var text = window.__rqsSelectedText;
-    if (text) {
+  async function triggerSearch() {
+    // 1. Context menu pre-set text (from background.js)
+    if (window.__rqsSelectedText) {
+      var txt = window.__rqsSelectedText;
       window.__rqsSelectedText = null;
-    } else {
-      text = window.getSelection().toString().trim();
-    }
-
-    if (!text) {
-      showPopup("Please highlight a company name first.", true);
+      showPopup('Searching for "' + escapeHtml(txt) + '"...', false, false);
+      fetchCompanyInfo(txt, false);
       return;
     }
 
-    showPopup('Searching for "' + escapeHtml(text) + '"...', false);
-    fetchCompanyInfo(text);
+    // 2. Try standard DOM selection (works on normal web pages)
+    var text = window.getSelection().toString().trim();
+
+    // 3. Clipboard fallback — for sites where selection doesn't work (Drive, Docs)
+    var fromClipboard = false;
+    if (!text) {
+      try {
+        text = await navigator.clipboard.readText();
+        text = text.trim();
+        fromClipboard = true;
+      } catch (_) { /* clipboard read requires HTTPS + permission */ }
+    }
+
+    if (!text) {
+      showPopup("Please highlight a company name first.", true, false);
+      return;
+    }
+
+    showPopup('Searching for "' + escapeHtml(text) + '"...', false, fromClipboard);
+    fetchCompanyInfo(text, fromClipboard);
   }
 
   window.__rqsTrigger = triggerSearch;
 
   // ── Popup ──────────────────────────────────────────────────────────
 
-  function showPopup(content, isError) {
+  function showPopup(content, isError, fromClipboard) {
     removePopup();
 
     const wrapper = document.createElement("div");
@@ -120,7 +133,7 @@
 
   // ── API call ───────────────────────────────────────────────────────
 
-  async function fetchCompanyInfo(company) {
+  async function fetchCompanyInfo(company, fromClipboard) {
     try {
       var resp = await fetch(BACKEND_URL, {
         method: "POST",
@@ -142,7 +155,7 @@
       var body = document.getElementById("__rqs-body");
       if (!body) return;
 
-      body.innerHTML = buildResultHTML(data);
+      body.innerHTML = buildResultHTML(data, fromClipboard);
     } catch (e) {
       showPopup("Could not reach the backend. Check your connection.", true);
     }
@@ -150,7 +163,7 @@
 
   // ── Build result HTML ──────────────────────────────────────────────
 
-  function buildResultHTML(data) {
+  function buildResultHTML(data, fromClipboard) {
     var html = "";
 
     // Summary + cached badge
@@ -163,6 +176,16 @@
         "cached</span>";
     }
     html += "</div>";
+
+    // Clipboard hint — shown when user searched via clipboard (Drive, Docs)
+    if (fromClipboard) {
+      html +=
+        '<div style="background:#fff3e0;color:#e65100;font-size:11px;' +
+        'padding:6px 10px;margin:8px 0 4px 0;border-radius:4px;' +
+        'border-left:3px solid #ff9800;">' +
+        "Tip: On this page, use <b>Ctrl+C</b> to copy text, " +
+        "then <b>Ctrl+Shift+Y</b> to search.</div>";
+    }
 
     // Details as bullet points
     var details = data.details;
@@ -224,7 +247,7 @@
     if (msg.type === "showResult" && msg.data) {
       var body = document.getElementById("__rqs-body");
       if (body) {
-        body.innerHTML = buildResultHTML(msg.data);
+        body.innerHTML = buildResultHTML(msg.data, false);
       } else {
         // No existing popup — create one
         showResultPopup(msg.data);
