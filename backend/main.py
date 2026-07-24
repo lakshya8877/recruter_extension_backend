@@ -97,7 +97,7 @@ def search_tavily(company: str) -> Tuple[Optional[str], Dict[str, str], Optional
     payload = {
         "api_key": TAVILY_API_KEY,
         "query": (
-            f"{company} company overview founded year employees "
+            f"{company} India company overview founded year employees "
             f"revenue funding headquarters CEO industry clients"
         ),
         "search_depth": "advanced",
