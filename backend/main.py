@@ -144,19 +144,15 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
         r"(?:headquartered|based|located)\s*(?:in|at)?\s*([A-Z][a-zA-Z\s]+?(?:,\s*[A-Z]{2})?(?:,\s*[A-Z][a-z]+)?)(?:\.|,|\s+with|\s+and|\s+It|\s+The|$)",
         text, re.I,
     )
-    details["headquarters"] = m.group(1).strip().rstrip(",") if m else "Not found"
-    # Detect blended data (multiple conflicting locations)
-    if details["headquarters"] != "Not found":
-        hq = details["headquarters"]
-        countries = re.findall(r"\b(India|USA|UK|Zimbabwe|China|Brazil|Germany|France|Japan|Canada|Australia|Singapore|UAE|Dubai|Nigeria|Kenya)\b", hq, re.I)
-        cities = re.findall(r"\b([A-Z][a-z]+(?:pur|bad|garh|abad|giri|patnam|nagar)?)\b", hq)
-        # Too many distinct locations → blended
-        if len(countries) >= 2 or len(cities) >= 3 or len(hq) > 60:
-            details["headquarters"] = "Not found"
+    hq = m.group(1).strip().rstrip(",") if m else ""
+    # Filter out blended/multi-location noise
+    countries = re.findall(r"\b(India|USA|UK|China|Brazil|Germany|France|Japan|Canada|Australia|Singapore|UAE|Nigeria|Kenya)\b", hq, re.I)
+    cities = re.findall(r"\b([A-Z][a-z]+(?:pur|bad|garh|abad|giri|patnam|nagar)?)\b", hq)
+    details["headquarters"] = hq if hq and len(countries) < 2 and len(cities) < 3 and len(hq) <= 60 else "Not found"
 
     # Employees / size
     m = re.search(
-        r"(?:with\s+)?(?:over|about|around)?\s*([\d,]+(?:[–-][\d,]+)?)\s*(?:employees|staff|people|team members|workers)",
+        r"(?:with\s+)?(?:over|about|around|approximately)?\s*([\d,]+(?:[–-][\d,]+)?)\s*(?:employees|staff|people|team members|workers)",
         text, re.I,
     )
     if m:
@@ -165,26 +161,45 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
         m = re.search(r"(\d+[-–]\d+)\s*employees", text, re.I)
         details["size"] = m.group(1) + " employees" if m else "Not found"
 
-    # ── Revenue ────────────────────────────────────────────────────
-    m = re.search(
-        r"(?:revenue|annual revenue)(?:\s*(?:of|is|:))?\s*\$?([\d.]+(?:\s*[MBTK]illion|[MBTK]\b)?)",
-        text, re.I,
-    )
-    details["revenue"] = _clean_dollar(m.group(1)) if m else "Not found"
+    # ── Unified dollar-amount extraction (revenue + funding) ──────
 
-    # ── Funding ────────────────────────────────────────────────────
-    m = re.search(
-        r"(?:raised|secured|funding of)\s*\$?([\d.]+(?:\s*[MBTK]illion|[MBTK]\b)?)",
-        text, re.I,
-    )
-    if m:
-        details["last_funding"] = _clean_dollar(m.group(1))
-    elif re.search(r"bootstrapp|self.funded|no (?:external )?funding", text, re.I):
+    # Find all "$X unit" patterns with surrounding context
+    dollar_hits = []
+    for m in re.finditer(r"\$?([\d.]+)\s*(million|billion|thousand|[MBTK])\b", text, re.I):
+        start = max(0, m.start() - 80)
+        end = min(len(text), m.end() + 40)
+        ctx = text[start:end]
+        dollar_hits.append((m.group(1), m.group(2), ctx))
+
+    # Classify hits as revenue or funding based on nearby keywords
+    details["revenue"] = "Not found"
+    details["last_funding"] = "Not found"
+
+    for num, unit, ctx in dollar_hits:
+        # Skip amounts that are user/client counts, not money
+        if re.search(r"\b(?:users|clients|customers|members|subscribers)\b", ctx, re.I):
+            continue
+        val = _clean_dollar(num + " " + unit)
+        is_funding = bool(re.search(r"\b(?:funding|raised|secured|investment|investors|series [a-e]|seed|round)\b", ctx, re.I))
+        is_revenue = bool(re.search(r"\b(?:revenue|sales|ARR|annual|income|turnover)\b", ctx, re.I))
+
+        if is_funding and details["last_funding"] == "Not found":
+            details["last_funding"] = val
+        elif is_revenue and details["revenue"] == "Not found":
+            details["revenue"] = val
+        elif not is_funding and not is_revenue:
+            # Unclear — check broader context: "in funding" vs "in revenue"
+            if "funding" in ctx.lower():
+                if details["last_funding"] == "Not found":
+                    details["last_funding"] = val
+            elif details["last_funding"] == "Not found":
+                details["last_funding"] = val  # default to funding
+
+    # Bootstrapped fallback
+    if details["last_funding"] == "Not found" and re.search(r"bootstrapp|self.funded|no (?:external )?funding", text, re.I):
         details["last_funding"] = "Bootstrapped"
-    else:
-        details["last_funding"] = "Not found"
 
-    # CEO / Leadership
+    # ── CEO / Leadership ──────────────────────────────────────────
     m = re.search(
         r"(?:CEO\s*(?:is|:)?|led by\s*(?:CEO\s*)?|founded by)\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+){1,3})",
         text, re.I,
@@ -196,26 +211,31 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
         )
     details["leadership"] = m.group(1).strip() if m else "Not found"
 
-    # Industry
+    # ── Industry ──────────────────────────────────────────────────
+    # Try explicit mentions first
     m = re.search(
-        r"(?:operates in|industry|sector)(?:\s*(?:is|:))?\s*(?:the)?\s*([a-zA-Z\s&]+?)(?:\.|,| and|$)",
+        r"(?:industry|sector|operates in)\s*(?:is|:)?\s*(?:the)?\s*([a-zA-Z\s&]{3,40}?)(?:\.|,|\s+and|\s+with|\s+headquartered|\s+It|$)",
         text, re.I,
     )
     if not m:
+        # Fallback: "is a/an/the [X] company/firm/platform"
         m = re.search(
-            r"(?:a|an|the)\s+([a-z]+(?:\s[a-z]+){0,3})\s+(?:company|firm|platform|startup|business)",
+            r"(?:is\s+)?(?:a|an|the)\s+([a-z]+(?:\s[a-z]+){0,2})\s+(?:company|firm|platform|startup|business)",
             text, re.I,
         )
+    if not m:
+        # Last resort: "is a [X], " pattern
+        m = re.search(r"is an?\s+([a-z]+(?:\s[a-z]+){0,2}),", text, re.I)
     details["industry"] = m.group(1).strip() if m else "Not found"
 
-    # Clients
+    # ── Clients ───────────────────────────────────────────────────
     m = re.search(
-        r"(?:clients|customers|users)(?:\s*(?:include|of|:))?\s*(?:over|about|more than)?\s*([\d,.]+(?:\s*[MBK]illion)?(?:\s*(?:active|paying|registered|daily))?)",
+        r"([\d,.]+(?:\s*[MBK]illion)?)\s*(?:active|paying|registered|daily)?\s*(?:clients|customers|users)",
         text, re.I,
     )
     if not m:
         m = re.search(
-            r"([\d,.]+(?:\s*[MBK]illion)?)\s*(?:active|paying|registered|daily)?\s*(?:clients|customers|users)",
+            r"(?:clients|customers|users)(?:\s*(?:include|of|:))?\s*(?:over|about|more than)?\s*([\d,.]+(?:\s*[MBK]illion)?)",
             text, re.I,
         )
     details["clients"] = m.group(1).strip() if m else "Not found"
@@ -224,11 +244,9 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
 
 
 def _clean_dollar(val: str) -> str:
-    """Clean up dollar amounts: '120 million' → '$120M', strip trailing 'in','to date'."""
+    """Normalize '120 million' → '$120M', '60K' → '$60K', strip trailing noise."""
     val = val.strip().rstrip(",")
-    # Remove trailing noise words
     val = re.sub(r"\s+(?:in\b.*|to\s+date.*|total.*|funding.*|as\s+of.*)", "", val, flags=re.I)
-    # Normalize units
     val = re.sub(r"\s*million", "M", val, flags=re.I)
     val = re.sub(r"\s*billion", "B", val, flags=re.I)
     val = re.sub(r"\s*thousand", "K", val, flags=re.I)
