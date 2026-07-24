@@ -7,42 +7,14 @@
 
   const BACKEND_URL = "https://recruter-exten.vercel.app/lookup";
 
-  async function triggerSearch() {
-    // 1. Context menu pre-set text (from background.js)
-    if (window.__rqsSelectedText) {
-      var txt = window.__rqsSelectedText;
+  function triggerSearch() {
+    // Text already captured by background.js (shortcut/context-menu)
+    // or try live DOM selection for normal pages
+    var text = window.__rqsSelectedText;
+    if (text) {
       window.__rqsSelectedText = null;
-      showPopup('Searching for "' + escapeHtml(txt) + '"...', false);
-      fetchCompanyInfo(txt);
-      return;
-    }
-
-    // 2. Try standard DOM selection (works on normal web pages)
-    var text = window.getSelection().toString().trim();
-
-    // 3. Clipboard fallback — works in Google Docs, Drive, and canvas-based viewers
-    if (!text) {
-      var oldClip = "";
-      try {
-        oldClip = await navigator.clipboard.readText();
-      } catch (_) { /* may fail if no prior clipboard content */ }
-
-      document.execCommand("copy");
-
-      try {
-        await new Promise(function (r) { setTimeout(r, 100); });
-        text = await navigator.clipboard.readText();
-        text = text.trim();
-      } catch (err) {
-        console.warn("Clipboard read failed:", err);
-      }
-
-      // Restore original clipboard content
-      if (oldClip && text && oldClip !== text) {
-        try {
-          await navigator.clipboard.writeText(oldClip);
-        } catch (_) { /* best effort */ }
-      }
+    } else {
+      text = window.getSelection().toString().trim();
     }
 
     if (!text) {
