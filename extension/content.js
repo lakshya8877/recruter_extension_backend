@@ -1,5 +1,5 @@
 // ── Replace this with your deployed Vercel URL ──────────────────────────
-const BACKEND_URL = "https://YOUR_VERCEL_URL.vercel.app/lookup";
+const BACKEND_URL = "https://recruter-exten-2k004mk6z-lakshyasharma8877-6071s-projects.vercel.app/lookup";
 // ────────────────────────────────────────────────────────────────────────
 
 // Guard: avoid stacking handlers if the user triggers the shortcut
