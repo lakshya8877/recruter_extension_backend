@@ -1,7 +1,6 @@
 import os
 import re
 import requests
-import concurrent.futures
 from collections import OrderedDict
 from typing import Optional, Dict, Tuple
 from fastapi import FastAPI, HTTPException
@@ -95,48 +94,33 @@ def search_tavily(company: str) -> Tuple[Optional[str], Dict[str, str], Optional
     if not TAVILY_API_KEY:
         return None, {}, None
 
-    # Two parallel calls to maximize data coverage at speed:
-    # Q1 → founded, HQ, industry, CEO, funding + link from results
-    # Q2 → revenue, employee count, clients
-    q1 = f"{company} overview founded CEO funding industry"
-    q2 = f"{company} revenue employees annual"
-
-    def _call(query: str, depth: str, need_link: bool = False):
-        """Returns (answer, link_or_none)."""
-        try:
-            r = requests.post("https://api.tavily.com/search", json={
-                "api_key": TAVILY_API_KEY,
-                "query": query,
-                "search_depth": depth,
-                "include_answer": True,
-                "max_results": 5,
-            }, timeout=15)
-            r.raise_for_status()
-            data = r.json()
-            answer = data.get("answer", "") or ""
-            link = None
-            if need_link:
-                results = data.get("results", [])
-                link = _pick_best_link(results, company)
-            return answer, link
-        except Exception:
-            return "", None
-
+    payload = {
+        "api_key": TAVILY_API_KEY,
+        "query": f"{company} overview founded CEO funding industry revenue employees",
+        "search_depth": "basic",
+        "include_answer": True,
+        "max_results": 3,
+    }
     try:
-        with concurrent.futures.ThreadPoolExecutor() as ex:
-            # Q1: advanced for quality summary + link
-            # Q2: basic for speed — just needs extra data points
-            f1 = ex.submit(_call, q1, "advanced", True)
-            f2 = ex.submit(_call, q2, "basic", False)
-            a1, link = f1.result()
-            a2, _ = f2.result()
+        r = requests.post("https://api.tavily.com/search", json=payload, timeout=10)
+        r.raise_for_status()
+        data = r.json()
 
-        combined = (a1 + ". " + a2).strip()
-        if not combined:
-            return None, {}, None
+        answer = data.get("answer", "")
+        results = data.get("results", [])
+        link = _pick_best_link(results, company)
 
-        summary, details = _split_answer(combined)
-        return summary, details, link
+        if answer:
+            summary, details = _split_answer(answer)
+            return summary, details, link
+
+        if results:
+            combined = " ".join(
+                r.get("content", "") for r in results[:3] if r.get("content")
+            )[:600]
+            if combined.strip():
+                summary, details = _split_answer(combined)
+                return summary, details, link
     except Exception:
         pass
     return None, {}, None
@@ -276,11 +260,11 @@ def search_serper(company: str) -> Tuple[Optional[str], Dict[str, str], Optional
         return None, {}, None
 
     headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
-    payload = {"q": f'"{company}" India company overview founded employees revenue', "num": 10}
+    payload = {"q": f"{company} company overview founded employees revenue", "num": 5}
     try:
         r = requests.post(
             "https://google.serper.dev/search",
-            json=payload, headers=headers, timeout=15,
+            json=payload, headers=headers, timeout=10,
         )
         r.raise_for_status()
         data = r.json()
