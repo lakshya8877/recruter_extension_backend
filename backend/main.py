@@ -95,52 +95,45 @@ def search_tavily(company: str) -> Tuple[Optional[str], Dict[str, str], Optional
     if not TAVILY_API_KEY:
         return None, {}, None
 
-    # Two parallel queries to maximize data coverage:
-    # Q1 → founded, HQ, industry, CEO, funding
+    # Two parallel calls to maximize data coverage at speed:
+    # Q1 → founded, HQ, industry, CEO, funding + link from results
     # Q2 → revenue, employee count, clients
-    q1 = f"{company} company overview founded year employees funding headquarters CEO industry"
-    q2 = f"{company} CEO annual revenue funding raised employee count clients"
+    q1 = f"{company} overview founded CEO funding industry"
+    q2 = f"{company} revenue employees annual"
 
-    def _call(query: str) -> str:
+    def _call(query: str, depth: str, need_link: bool = False):
+        """Returns (answer, link_or_none)."""
         try:
             r = requests.post("https://api.tavily.com/search", json={
                 "api_key": TAVILY_API_KEY,
                 "query": query,
-                "search_depth": "advanced",
+                "search_depth": depth,
                 "include_answer": True,
-                "max_results": 10,
-            }, timeout=20)
+                "max_results": 5,
+            }, timeout=15)
             r.raise_for_status()
-            return r.json().get("answer", "") or ""
+            data = r.json()
+            answer = data.get("answer", "") or ""
+            link = None
+            if need_link:
+                results = data.get("results", [])
+                link = _pick_best_link(results, company)
+            return answer, link
         except Exception:
-            return ""
+            return "", None
 
     try:
         with concurrent.futures.ThreadPoolExecutor() as ex:
-            f1 = ex.submit(_call, q1)
-            f2 = ex.submit(_call, q2)
-            a1 = f1.result()
-            a2 = f2.result()
+            # Q1: advanced for quality summary + link
+            # Q2: basic for speed — just needs extra data points
+            f1 = ex.submit(_call, q1, "advanced", True)
+            f2 = ex.submit(_call, q2, "basic", False)
+            a1, link = f1.result()
+            a2, _ = f2.result()
 
         combined = (a1 + ". " + a2).strip()
         if not combined:
             return None, {}, None
-
-        # Get link from a separate lightweight call or first result
-        link = None
-        try:
-            r = requests.post("https://api.tavily.com/search", json={
-                "api_key": TAVILY_API_KEY,
-                "query": company,
-                "search_depth": "basic",
-                "include_answer": False,
-                "max_results": 3,
-            }, timeout=10)
-            r.raise_for_status()
-            results = r.json().get("results", [])
-            link = _pick_best_link(results, company)
-        except Exception:
-            pass
 
         summary, details = _split_answer(combined)
         return summary, details, link
