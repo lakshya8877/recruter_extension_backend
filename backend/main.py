@@ -136,17 +136,6 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
     m = re.search(r"(?:founded|established|launched)\s*(?:in)?\s*(\d{4})", text, re.I)
     details["founding_year"] = m.group(1) if m else "Not found"
 
-    # Headquarters
-    m = re.search(
-        r"(?:headquartered|based|located)\s*(?:in|at)?\s*([A-Z][a-zA-Z\s]+?(?:,\s*[A-Z]{2})?(?:,\s*[A-Z][a-z]+)?)(?:\.|,|\s+with|\s+and|\s+It|\s+The|$)",
-        text, re.I,
-    )
-    hq = m.group(1).strip().rstrip(",") if m else ""
-    # Filter out blended/multi-location noise
-    countries = re.findall(r"\b(India|USA|UK|China|Brazil|Germany|France|Japan|Canada|Australia|Singapore|UAE|Nigeria|Kenya)\b", hq, re.I)
-    cities = re.findall(r"\b([A-Z][a-z]+(?:pur|bad|garh|abad|giri|patnam|nagar)?)\b", hq)
-    details["headquarters"] = hq if hq and len(countries) < 2 and len(cities) < 3 and len(hq) <= 60 else "Not found"
-
     # Employees / size
     m = re.search(
         r"(?:with\s+)?(?:over|about|around|approximately)?\s*([\d,]+(?:[–-][\d,]+)?)\s*(?:employees|staff|people|team members|workers)",
@@ -198,7 +187,7 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
 
     # ── CEO / Leadership ──────────────────────────────────────────
     m = re.search(
-        r"(?:CEO\s*(?:is|:)?|led by\s*(?:CEO\s*)?|founded by)\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+){1,3})",
+        r"(?:CEO\s*(?:is|:)?|led by\s*(?:CEO\s*)?|founded by|Co-founder\s*&?\s*CEO)\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+){1,3})",
         text, re.I,
     )
     if not m:
@@ -206,23 +195,43 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
             r"([A-Z][a-z]+(?:\s[A-Z][a-z]+){1,2})\s*(?:is the|serves as|,)\s*CEO",
             text, re.I,
         )
-    details["leadership"] = m.group(1).strip() if m else "Not found"
+    if not m:
+        m = re.search(r"CEO\s+(?:of\s+\S+\s+)?(?:is\s+)?([A-Z][a-z]+(?:\s[A-Z][a-z]+){1,3})", text, re.I)
+    if not m:
+        m = re.search(r"Co-founder\s*(?:&|and)\s*CEO[,.]?\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+){1,3})", text, re.I)
+    # Clean up trailing garbage like " leads the", " and raised", " of Company is"
+    ceo = m.group(1).strip() if m else ""
+    ceo = re.sub(r"\s+(?:leads?\s+the|and\s+raised|of\s+\S+\s+(?:is\s+)?).*", "", ceo, flags=re.I)
+    details["leadership"] = ceo.strip() if ceo else "Not found"
+
+    # ── Headquarters ───────────────────────────────────────────────
+    m = re.search(
+        r"(?:headquartered|based|located|HQ|Headquarters)\s*(?:in|at|:)?\s*([A-Z][a-zA-Z\s]+?(?:,\s*[A-Z]{2})?(?:,\s*[A-Z][a-z]+)?)(?:\.|,|\s+with|\s+and|\s+It|\s+The|\s+\d|$)",
+        text, re.I,
+    )
+    hq = m.group(1).strip().rstrip(",") if m else ""
+    # Filter out blended/multi-location noise
+    countries = re.findall(r"\b(India|USA|UK|China|Brazil|Germany|France|Japan|Canada|Australia|Singapore|UAE|Nigeria|Kenya)\b", hq, re.I)
+    cities = re.findall(r"\b([A-Z][a-z]+(?:pur|bad|garh|abad|giri|patnam|nagar)?)\b", hq)
+    details["headquarters"] = hq if hq and len(countries) < 2 and len(cities) < 3 and len(hq) <= 60 else "Not found"
 
     # ── Industry ──────────────────────────────────────────────────
-    # Try explicit mentions first
+    # Serper format: "Industry, Cybersecurity" or "Industry: Fintech"
     m = re.search(
-        r"(?:industry|sector|operates in)\s*(?:is|:)?\s*(?:the)?\s*([a-zA-Z\s&]{3,40}?)(?:\.|,|\s+and|\s+with|\s+headquartered|\s+It|$)",
+        r"(?:Industry|Sector)\s*[,:]\s*([a-zA-Z\s&]{3,40}?)(?:\.|,|\s+(?:and|with|headquartered|Number|Founded|Revenue|$))",
         text, re.I,
     )
     if not m:
-        # Fallback: "is a/an/the [X] company/firm/platform"
+        # Tavily format: "operates in the X industry" or "is a X company"
+        m = re.search(
+            r"(?:industry|sector|operates in)\s*(?:is|:)?\s*(?:the)?\s*([a-zA-Z\s&]{3,40}?)(?:\.|,|\s+and|\s+with|\s+headquartered|\s+It|$)",
+            text, re.I,
+        )
+    if not m:
         m = re.search(
             r"(?:is\s+)?(?:a|an|the)\s+([a-z]+(?:\s[a-z]+){0,2})\s+(?:company|firm|platform|startup|business)",
             text, re.I,
         )
-    if not m:
-        # Last resort: "is a [X], " pattern
-        m = re.search(r"is an?\s+([a-z]+(?:\s[a-z]+){0,2}),", text, re.I)
     details["industry"] = m.group(1).strip() if m else "Not found"
 
     # ── Clients ───────────────────────────────────────────────────
@@ -241,12 +250,16 @@ def _split_answer(text: str) -> Tuple[str, Dict[str, str]]:
 
 
 def _clean_dollar(val: str) -> str:
-    """Normalize '120 million' → '$120M', '60K' → '$60K', strip trailing noise."""
+    """Normalize '120 million' → '$120M', '134.1 M' → '$134.1M', strip trailing noise."""
     val = val.strip().rstrip(",")
+    # Remove trailing noise words
     val = re.sub(r"\s+(?:in\b.*|to\s+date.*|total.*|funding.*|as\s+of.*)", "", val, flags=re.I)
+    # Normalize full words
     val = re.sub(r"\s*million", "M", val, flags=re.I)
     val = re.sub(r"\s*billion", "B", val, flags=re.I)
     val = re.sub(r"\s*thousand", "K", val, flags=re.I)
+    # Normalize single-letter units with optional space: "134.1 M" → "134.1M"
+    val = re.sub(r"\s+([MBTK])\b", r"\1", val, flags=re.I)
     if not val.startswith("$"):
         val = "$" + val
     return val
@@ -260,7 +273,10 @@ def search_serper(company: str) -> Tuple[Optional[str], Dict[str, str], Optional
         return None, {}, None
 
     headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
-    payload = {"q": f"{company} company overview founded employees revenue", "num": 5}
+    payload = {
+        "q": f"{company} overview founded year employees revenue funding CEO industry",
+        "num": 5,
+    }
     try:
         r = requests.post(
             "https://google.serper.dev/search",
@@ -272,27 +288,31 @@ def search_serper(company: str) -> Tuple[Optional[str], Dict[str, str], Optional
         kg = data.get("knowledgeGraph", {})
         organic = data.get("organic", [])
 
+        # Official link: prefer KG website, else pick from organic (normalized keys)
         link = kg.get("websiteUrl") or kg.get("website")
         if not link and organic:
-            link = _pick_best_link(organic, company)
+            norm_results = [{"url": item.get("link", ""), "title": item.get("title", "")} for item in organic[:5]]
+            link = _pick_best_link(norm_results, company)
 
-        parts = []
+        # Build combined text from organic snippets
+        combined = " | ".join(
+            item.get("snippet", "") for item in organic[:5] if item.get("snippet")
+        )[:1000]
+
+        if combined.strip():
+            # Run through the same parser as Tavily answers
+            summary, details = _split_answer(combined)
+            return summary, details, link
+
+        # Last resort: KG description only
         if kg.get("description"):
-            parts.append(kg["description"])
-        for item in organic[:3]:
-            s = item.get("snippet", "")
-            if s:
-                parts.append(s)
-
-        summary = " | ".join(parts)[:600] if parts else None
-
-        details: Dict[str, str] = {}
-        if kg.get("type"):
-            details["industry"] = kg["type"]
-        if kg.get("employeeCount"):
-            details["size"] = f"{kg['employeeCount']} employees"
-
-        return summary, details, link
+            desc = kg["description"]
+            details: Dict[str, str] = {}
+            if kg.get("type"):
+                details["industry"] = kg["type"]
+            if kg.get("employeeCount"):
+                details["size"] = f"{kg['employeeCount']} employees"
+            return desc, details, link
     except Exception:
         pass
     return None, {}, None

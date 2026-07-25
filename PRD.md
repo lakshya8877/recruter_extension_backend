@@ -1,169 +1,67 @@
-# Recruiter Quick Search — Product Requirements Document
+# Recruiter Quick Search — PRD v3.0
 
-> **Version 2.0** | July 24, 2026 | Status: Live (Vercel)
+> July 24, 2026 | Status: Live (Vercel)
 
----
+### Product Summary
 
-## 1. What It Does
+A Chrome extension for recruiters. Highlight a company name on any page, press `Ctrl+Shift+Y`, and a popup shows an instant summary with eight structured facts. No new tabs, no Googling, no context-switching.
 
-A Chrome extension that lets recruiters look up a company without leaving the resume. Highlight any company name on any webpage, press `Ctrl+Shift+Y`, and a popup appears with an instant summary plus key facts. No new tabs, no Googling, no context-switching.
+### Problem Statement
 
-**One flow, three seconds:** Highlight → shortcut → read → dismiss.
+A candidate's past employer is one of the strongest signals on a resume — but only if the recruiter can evaluate it. During high-volume screening, recruiters frequently encounter unfamiliar company names and must decide in seconds whether that employer makes the candidate relevant and credible.
 
----
+Today, verifying an unfamiliar company means a six-step detour: highlight, right-click, open a new tab, scan results, piece together a mental picture, then navigate back. Each detour costs 15–30 seconds and breaks screening flow. Over 50–100 resumes a day, recruiters produce 20–50 of these context switches — and unfamiliar companies often get skipped rather than investigated. This means strong candidates from lesser-known employers are silently rejected, and fabricated employers pass through unchallenged.
 
-## 2. Problem Statement
+### Target User
 
-### Context
+Agency and in-house recruiters screening 50–100 resumes per day, with a focus on the Indian hiring market.
 
-During high-volume resume screening, recruiters frequently encounter unfamiliar company names and need to quickly verify their industry, legitimacy, and scale. A candidate's past employer is one of the strongest signals on a resume — but only if the recruiter can evaluate it.
+### Data Points — What the Recruiter Needs and Why
 
-### The Problem
+- **Summary** — 1–3 sentence description of what the company does. The go/no-go gate. A BPO for a product-engineering role gets rejected in 3 seconds instead of 30.
+- **Industry** — Fastest hard filter. A fintech role drops non-fintech candidates immediately. When domain experience is a "nice to have," it serves as a ranking signal.
+- **Size** — Headcount calibrates title meaning. An "Engineering Manager" at a 10-person startup and at a 10,000-person enterprise are different jobs. Predicts environment fit — mismatched scale is a known attrition risk.
+- **Founded** — Legitimacy and context. A candidate claiming 6 years at a company founded 2 years ago is an immediate red flag. Age signals whether the experience was early-stage scrappiness or mature, process-driven operations.
+- **Funding** — Stage proxy. Seed-stage means 0-to-1 work, Series-D means scaling processes, bootstrapped means capital-efficient. Matching candidate stage to hiring company stage is a strong predictor of startup-hire success.
+- **Revenue** — Makes impact claims falsifiable. "Managed a Rs.50 Cr portfolio" at a negligible-revenue company doesn't add up. Separates substantive businesses from shell companies.
+- **Clients** — Validates scale-of-work claims and reveals B2B vs. B2C exposure. Notable client logos transfer credibility — the candidate survived enterprise-grade scrutiny.
+- **Leadership** — Known founders upgrade unknown companies. "Ex-Flipkart leader" reframes a no-name startup as a pedigree employer. Provides a concrete reference backchannel.
+- **Headquarters** — Reveals which market the candidate knows — India-market vs. global exposure. Supports location verification on the resume.
+- **Official Link** — One click to the employer's website for deeper diligence on shortlist-worthy profiles.
+- **"Not found"** — Absence of information is itself information. The tool never hallucinates. A company with no discoverable footprint is a screening signal: obscure but real, or fabricated.
 
-The current verification workflow is heavily fragmented. A recruiter must:
+### Restricted Pages (Google Drive, Docs)
 
-1. Highlight the company name
-2. Right-click to search
-3. Wait for a new tab to open
-4. Scan through multiple search results
-5. Piece together a mental summary from snippets
-6. Close the tab and navigate back to the original document
+On canvas-rendered pages where `window.getSelection()` fails, the extension reads the clipboard as fallback. The user workflow is: highlight text, press `Ctrl+C` to copy, then `Ctrl+Shift+Y` to search. The popup shows an orange tip explaining this. On normal web pages, text selection works directly — no copy step needed.
 
-This constant context-switching breaks focus, introduces cognitive friction, and significantly slows down the evaluation process.
+### Usage
 
-### Impact
+Highlight a company name anywhere — LinkedIn, PDF, Excel, job boards — press `Ctrl+Shift+Y`, and a floating popup appears top-right with the summary, bullet-point details, and a link to the official website. Dismiss with `Escape`, the close button, or a click anywhere outside. Repeat lookups return instantly with a green "cached" badge (last 10 cached). On restricted pages like Google Drive, use `Ctrl+C` then `Ctrl+Shift+Y`.
 
-Recruiters screen 50-100 resumes a day. Every unfamiliar company name forces this detour. Each one costs 15-30 seconds and breaks the recruiter's flow. Over a single day, that adds up to 20-50 context switches — wasted time, mental fatigue, and companies that get skipped rather than investigated.
+### How It Works
 
-This tool collapses that detour into a single keystroke on the same page.
+Highlighted text is sent to a FastAPI backend on Vercel, which queries the Tavily Search API and parses results into a summary and eight structured data points. The popup renders on-page in 1–3 seconds. Repeat lookups hit an in-memory cache.
 
----
+### Limitations
 
-## 3. What the Recruiter Sees
+- **Ambiguous names** — May blend data from similarly-named companies (mitigated with exact-phrase matching)
+- **Obscure companies** — May return "No information found" (Serper fallback active)
+- **Cold starts** — First lookup after idle takes 3–5s (loading state shown)
 
-### Trigger
-- Highlight a company name anywhere (LinkedIn, PDF, Excel, job boards)
-- Press `Ctrl+Shift+Y` — or click the extension icon in the toolbar
+### Planned
 
-### The Popup
-A floating card appears in the top-right corner of the page:
+- Indian government startup database APIs (Startup India, MCA registry) for authoritative legitimacy data
+- Improved disambiguation for shared company names
+- Copy-to-clipboard on the popup for ATS note pasting
+- Dark mode support
 
-```
-┌─────────────────────────────────────────┐
-│  Company Lookup                      ×  │
-│                                         │
-│  Zerodha is an Indian financial         │
-│  services company founded in 2010,      │
-│  headquartered in Bengaluru, offering   │
-│  brokerage-free stock trading. It has   │
-│  over 7.5 million active clients.   [cached]
-│                                         │
-│  Founded:     2010                      │
-│  Headquarters: Bengaluru                │
-│  Size:        Not found                 │
-│  Revenue:     Not found                 │
-│  Funding:     Bootstrapped              │
-│  Industry:    Financial Services        │
-│  Leadership:  Nithin Kamath             │
-│  Clients:     7.5 million               │
-│                                         │
-│  Visit Official Website                 │
-└─────────────────────────────────────────┘
-```
-
-### Dismissal
-- Click the × button
-- Press `Escape`
-- Click anywhere outside the popup
-
-### Cache
-If you look up the same company again, it returns instantly with a green "cached" badge. The last 10 lookups are cached automatically.
-
----
-
-## 4. What Data It Shows
-
-| Field | Description | Example |
-|---|---|---|
-| **Summary** | 1-3 sentence narrative about the company | "Fintech company founded in 2010..." |
-| **Founded** | Year the company was established | 2010 |
-| **Headquarters** | City and country | Bengaluru |
-| **Size** | Employee count or range | 4,000 employees |
-| **Revenue** | Annual revenue estimate | $250M |
-| **Funding** | Total funding raised, or "Bootstrapped" | $433M |
-| **Industry** | Sector the company operates in | Financial Services |
-| **Leadership** | CEO or founder names | Nithin Kamath |
-| **Clients** | User/customer count or notable names | 7.5 million |
-| **Official Link** | Direct link to company website | zerodha.com |
-
-Fields that can't be found show "Not found" — the tool never guesses.
-
----
-
-## 5. How It Works (Non-Technical)
-
-1. You highlight text and trigger the extension
-2. The extension sends the company name to a backend API on Vercel
-3. The backend searches the web using the Tavily Search API
-4. Results are parsed into a summary + 8 structured data points
-5. The popup renders everything on the same page
-6. Repeated lookups hit an in-memory cache (instant)
-
-The entire round-trip takes 2-4 seconds. If the backend is waking up from idle (Vercel cold start), it may take up to 5 seconds — a loading message is shown.
-
----
-
-## 6. Error Handling
-
-| Situation | What the recruiter sees |
-|---|---|
-| No text highlighted | "Please highlight a company name first." |
-| Searching | "Searching for 'CompanyName'..." |
-| Company not found | "No information found for 'CompanyName'." |
-| Network issue | "Could not reach the backend. Check your connection." |
-| Backend error | A clear error message, no crash |
-
-The extension never breaks the host page. On restricted pages (chrome://, edge://), it silently does nothing.
-
----
-
-## 7. Current Limitations & Known Issues
-
-| Issue | Impact | Status |
-|---|---|---|
-| Ambiguous company names | Search may blend data from similarly-named companies | Mitigated with exact-phrase matching |
-| Obscure/very new companies | May return "No information found" | Acceptable for now |
-| Cold start delay | First lookup after idle takes 3-5s | Loading state shown |
-| India bias is keyword-based | Not a geo-filter, just query prioritization | Works for most Indian companies |
-
----
-
-## 8. What's Planned Next
-
-- Serper (Google Search) as a fallback API when Tavily returns no results
-- Government startup database APIs for Indian company data (Startup India, MCA registry)
-- Improved disambiguation for companies with shared or similar names
-- Copy-to-clipboard button on the popup for pasting into ATS notes
-- Dark mode detection to match the host page theme
-
----
-
-## 9. Technical Summary (For Developers)
+### Tech Stack
 
 | Component | Technology |
 |---|---|
-| Browser Extension | Chrome Manifest V3, vanilla JS |
-| Backend | FastAPI (Python), deployed on Vercel |
-| Primary Search | Tavily Search API (AI-powered answers) |
-| Cache | In-memory LRU, last 10 lookups |
-| API Keys | Stored in Vercel environment variables |
-
-**Files:**
-- `extension/` — manifest.json, background.js, content.js, icons/
-- `backend/` — main.py, requirements.txt, vercel.json
-
-**Endpoints:**
-- `POST /lookup` — returns `{ summary, details: {...}, source, link, cached }`
-- `GET /health` — returns `{ status: "ok" }`
-
-**Response time:** 2-4 seconds
+| Extension | Chrome Manifest V3, vanilla JS |
+| Backend | FastAPI (Python), Vercel |
+| Search | Tavily API (primary), Serper (fallback) |
+| Cache | In-memory LRU, 10 entries |
+| Triggers | `Ctrl+Shift+Y`, toolbar icon, right-click context menu |
+| Response | 1–3 seconds |
