@@ -10,5 +10,9 @@
       "src": "/(.*)",
       "dest": "main.py"
     }
-  ]
+  ],
+  "env": {
+    "TAVILY_API_KEY": "@tavily-api-key",
+    "SERPER_API_KEY": "@serper-api-key"
+  }
 }
