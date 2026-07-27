@@ -187,38 +187,8 @@
         "then <b>Ctrl+Shift+Y</b> to search.</div>";
     }
 
-    // Details as bullet points
-    var details = data.details;
-    if (details && Object.keys(details).length > 0) {
-      html += '<div class="rqs-details">';
-
-      var labels = {
-        founding_year: "Founded",
-        headquarters: "Headquarters",
-        size: "Size",
-        revenue: "Revenue",
-        last_funding: "Funding",
-        industry: "Industry",
-        leadership: "Leadership",
-        clients: "Clients",
-      };
-
-      var keys = Object.keys(labels);
-      for (var i = 0; i < keys.length; i++) {
-        var k = keys[i];
-        var val = details[k];
-        if (val && val !== "Not found") {
-          html +=
-            '<span class="rqs-label">' +
-            escapeHtml(labels[k]) +
-            ":</span>" +
-            '<span class="rqs-val">' +
-            escapeHtml(val) +
-            "</span>";
-        }
-      }
-      html += "</div>";
-    }
+    // Details as bullet points - REMOVED per user request for simplicity + speed.
+    // The AI summary now contains all the relevant facts.
 
     // Link
     if (data.link) {
